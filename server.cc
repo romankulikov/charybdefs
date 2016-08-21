@@ -10,6 +10,8 @@
  * **
  */
 
+#define FUSE_USE_VERSION 29
+
 #include <chrono>
 #include <iostream>
 #include <map>
@@ -107,7 +109,7 @@ static bool is_valid_method(std::string method)
 static int random_err_no()
 {
     std::random_device rd;
-    std::uniform_int_distribution<int> dist(E2BIG, EXFULL);
+    std::uniform_int_distribution<int> dist(E2BIG, 35);
 
     return dist(rd);
 } 

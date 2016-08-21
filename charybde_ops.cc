@@ -10,6 +10,8 @@
  * **
  */
 
+#define FUSE_USE_VERSION 29
+
 #include "server.hh"
 
 #include <iostream>
@@ -20,7 +22,6 @@ extern "C" {
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/vfs.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -28,10 +29,35 @@ extern "C" {
 #include <dirent.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
+#ifdef __APPLE__
+#include <sys/syscall.h>
+#else
+#include <sys/vfs.h>
+#endif
 
 #include <string.h>
 
 #include "charybde_ops.h"
+
+#ifdef __APPLE__
+static int fdatasync(int fd)
+{
+	return syscall(SYS_fdatasync, fd);
+}
+
+static int fallocate(int fd, int mode, off_t offset, off_t len)
+{
+	fstore_t store = {F_ALLOCATECONTIG, mode, offset, len};
+	int ret = fcntl(fd, F_PREALLOCATE, &store);
+	if(-1 == ret){
+		store.fst_flags = F_ALLOCATEALL;
+		ret = fcntl(fd, F_PREALLOCATE, &store);
+		if (-1 == ret)
+			return -1;
+	}
+	return ftruncate(fd, len);
+}
+#endif
 
 int charybde_getattr(const char *path, struct stat *buf)
 {
@@ -450,7 +476,7 @@ int charybde_setxattr(const char *path, const char *name,
         return ret;
     }
 
-    ret = setxattr(path, name, value, size, flags);
+    ret = setxattr(path, name, value, size, 0, flags);
     if (ret < 0) {
         in_flight--;
         return -errno;
@@ -471,7 +497,7 @@ int charybde_getxattr(const char *path, const char *name,
         return ret;
     }
 
-    ret = getxattr(path, name, value, size);
+    ret = getxattr(path, name, value, size, 0, 0);
     if (ret < 0) {
         in_flight--;
         return -errno;
@@ -492,7 +518,7 @@ int charybde_listxattr(const char *path, char *list,
         return ret;
     }
 
-    ret = listxattr(path, list, size);
+    ret = listxattr(path, list, size, 0);
     if (ret < 0) {
         in_flight--;
         return -errno;
@@ -513,7 +539,7 @@ int charybde_removexattr(const char *path, const char *name)
     }
 
 
-    ret = removexattr(path, name);
+    ret = removexattr(path, name, 0);
     if (ret < 0) {
         in_flight--;
         return -errno;
